@@ -31,3 +31,11 @@ storage:
   save_directory: "notes"
   auto_save: true
   auto_save_interval_sec: 60
+
+correction:
+  enabled: true
+  ollama_url: "http://localhost:11434"
+  model: "qwen2.5:7b"            # 日本語に強いモデル（VRAM不足なら "qwen2.5:3b"）
+  batch_interval_sec: 15          # 校正バッチの実行間隔（秒）
+  min_segments: 3                 # 校正を開始する最小セグメント数
+  timeout_sec: 30                 # Ollama API タイムアウト（秒）

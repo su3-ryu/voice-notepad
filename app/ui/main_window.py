@@ -17,6 +17,7 @@ from PyQt6.QtGui import QFont, QKeySequence, QShortcut
 
 from app.audio.recorder import AudioRecorder
 from app.audio.vad import VoiceActivityDetector
+from app.correction.batch_corrector import BatchCorrector
 from app.transcription.engine import TranscriptionEngine
 from app.transcription.postprocess import postprocess
 from app.storage.notes import NoteStorage
@@ -126,6 +127,9 @@ class MainWindow(QMainWindow):
         self._storage = NoteStorage(
             save_dir=cfg["storage"].get("save_directory", "notes")
         )
+        self._corrector = BatchCorrector(cfg.get("correction", {}))
+        self._corrector.correction_ready.connect(self._apply_correction)
+        self._corrector.status_changed.connect(self._status_bar.showMessage)
 
     def _setup_ui(self) -> None:
         self.setWindowTitle("Voice Notepad - 音声メモ帳")
@@ -222,6 +226,7 @@ class MainWindow(QMainWindow):
         self._worker.text_ready.connect(self._append_text)
         self._worker.status_changed.connect(self._status_bar.showMessage)
         self._worker.start()
+        self._corrector.start()
         self._btn_record.setText("■ 録音停止")
         self._btn_record.setStyleSheet("background-color: #e74c3c; color: white;")
 
@@ -230,6 +235,7 @@ class MainWindow(QMainWindow):
             self._worker.stop()
             self._worker.wait()
             self._worker = None
+        self._corrector.stop()
         self._btn_record.setText("● 録音開始")
         self._btn_record.setStyleSheet("")
         self._status_bar.showMessage("停止しました")
@@ -245,6 +251,17 @@ class MainWindow(QMainWindow):
             cursor.insertText(text)
         self._editor.setTextCursor(cursor)
         self._editor.ensureCursorVisible()
+        # 校正バッファにテキストを追加
+        self._corrector.add_text(text)
+
+    def _apply_correction(self, original: str, corrected: str) -> None:
+        """校正結果をエディタに反映する（元テキストを校正後テキストに置換）"""
+        doc = self._editor.document()
+        cursor = doc.find(original)
+        if cursor.isNull():
+            return
+        cursor.insertText(corrected)
+        self._status_bar.showMessage("✅ 自動校正を適用しました")
 
     def _clear_text(self) -> None:
         reply = QMessageBox.question(
