@@ -128,8 +128,6 @@ class MainWindow(QMainWindow):
             save_dir=cfg["storage"].get("save_directory", "notes")
         )
         self._corrector = BatchCorrector(cfg.get("correction", {}))
-        self._corrector.correction_ready.connect(self._apply_correction)
-        self._corrector.status_changed.connect(self._status_bar.showMessage)
 
     def _setup_ui(self) -> None:
         self.setWindowTitle("Voice Notepad - 音声メモ帳")
@@ -183,6 +181,10 @@ class MainWindow(QMainWindow):
         # ステータスバー
         self._status_bar = self.statusBar()
         self._status_bar.showMessage("準備中... (初回起動時はモデルのダウンロードが必要です)")
+
+        # 校正シグナル接続（_status_bar作成後に行う）
+        self._corrector.correction_ready.connect(self._apply_correction)
+        self._corrector.status_changed.connect(self._status_bar.showMessage)
 
     def _setup_shortcuts(self) -> None:
         # Ctrl+S で保存
