@@ -47,7 +47,7 @@ class TranscriptionWorker(QThread):
 
             try:
                 audio_flat = chunk.flatten()
-                if self.vad._in_speech:
+                if self.vad.in_speech:
                     self.status_changed.emit("🎙 音声検知中...")
                 segment = self.vad.process_chunk(audio_flat)
 
@@ -58,7 +58,7 @@ class TranscriptionWorker(QThread):
                     if text:
                         self.text_ready.emit(text)
                     self.status_changed.emit("🔴 録音中 - 話してください")
-            except Exception as e:
+            except (RuntimeError, OSError, ValueError) as e:
                 print(f"[Worker] エラー: {e}")
 
         self.recorder.stop()
@@ -79,6 +79,7 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self._setup_shortcuts()
         self._worker: Optional[TranscriptionWorker] = None
+        self._models_loaded = False
 
     def _load_config(self) -> None:
         with open("config.yaml", encoding="utf-8") as f:
@@ -101,7 +102,6 @@ class MainWindow(QMainWindow):
         self._storage = NoteStorage(
             save_dir=cfg["storage"].get("save_directory", "notes")
         )
-        self._models_loaded = False
 
     def _setup_ui(self) -> None:
         self.setWindowTitle("Voice Notepad - 音声メモ帳")

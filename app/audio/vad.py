@@ -68,6 +68,11 @@ class VoiceActivityDetector:
 
         return None
 
+    @property
+    def in_speech(self) -> bool:
+        """現在発話中かどうかを返す"""
+        return self._in_speech
+
     def _reset(self) -> None:
         self._speech_frames = 0
         self._silence_frames = 0

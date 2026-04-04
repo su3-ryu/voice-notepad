@@ -4,3 +4,13 @@ extension-pkg-allow-list=PyQt6
 [BASIC]
 # Qt overrides use camelCase (showEvent, closeEvent, etc.)
 good-names=showEvent,closeEvent
+
+[DESIGN]
+# UIクラスやデータクラスはattributeが多くなるのが自然
+max-attributes=15
+# Dialogなどpublic methodが少ないクラスを許容
+min-public-methods=0
+
+[IMPORTS]
+# 遅延import（重いモジュールの条件付きロード）を許可
+allow-any-import-level=torch,silero_vad
