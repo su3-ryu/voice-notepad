@@ -2,6 +2,7 @@
 メインウィンドウ
 PyQt6 ベースの音声メモ帳 UI
 """
+import queue
 import threading
 from pathlib import Path
 from typing import Optional
@@ -33,15 +34,24 @@ class TranscriptionWorker(QThread):
         self.vad = vad
         self.engine = engine
         self._running = False
+        self._pending_segments: queue.Queue = queue.Queue()
 
     def run(self) -> None:
         """録音・VAD・文字起こしのメインループ"""
         self._running = True
+        self.recorder.clear_buffer()
         self.recorder.start()
         self.status_changed.emit("録音中...")
 
+        # 文字起こしを別スレッドで並行処理
+        transcription_thread = threading.Thread(
+            target=self._transcription_loop, daemon=True
+        )
+        transcription_thread.start()
+
+        # VADループ（音声チャンクの処理に専念）
         while self._running:
-            chunk = self.recorder.read_chunk(timeout=0.1)
+            chunk = self.recorder.read_chunk(timeout=0.05)
             if chunk is None:
                 continue
 
@@ -52,17 +62,31 @@ class TranscriptionWorker(QThread):
                 segment = self.vad.process_chunk(audio_flat)
 
                 if segment is not None:
-                    self.status_changed.emit("⏳ 認識中...")
-                    text = self.engine.transcribe(segment)
-                    text = postprocess(text)
-                    if text:
-                        self.text_ready.emit(text)
-                    self.status_changed.emit("🔴 録音中 - 話してください")
+                    self._pending_segments.put(segment)
             except (RuntimeError, OSError, ValueError) as e:
-                print(f"[Worker] エラー: {e}")
+                print(f"[Worker VAD] エラー: {e}")
 
+        # 終了シグナルを送り、文字起こしスレッドの完了を待つ
+        self._pending_segments.put(None)
+        transcription_thread.join(timeout=5.0)
         self.recorder.stop()
         self.status_changed.emit("停止中")
+
+    def _transcription_loop(self) -> None:
+        """文字起こし専用ループ（別スレッドで実行）"""
+        while True:
+            segment = self._pending_segments.get()
+            if segment is None:
+                break
+            try:
+                self.status_changed.emit("⏳ 認識中...")
+                text = self.engine.transcribe(segment)
+                text = postprocess(text)
+                if text:
+                    self.text_ready.emit(text)
+                self.status_changed.emit("🔴 録音中 - 話してください")
+            except (RuntimeError, OSError, ValueError) as e:
+                print(f"[Worker Transcription] エラー: {e}")
 
     def stop(self) -> None:
         """ワーカースレッドを停止する"""
