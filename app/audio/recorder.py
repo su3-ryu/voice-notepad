@@ -21,8 +21,8 @@ class AudioRecorder:
         self._stream: Optional[sd.InputStream] = None
         self._is_recording = False
 
-    def _callback(self, indata: np.ndarray, frames: int,
-                  time_info, status) -> None:
+    def _callback(self, indata: np.ndarray, _frames: int,
+                  _time_info, status) -> None:
         if status:
             print(f"[AudioRecorder] 警告: {status}")
         self._audio_queue.put(indata.copy())

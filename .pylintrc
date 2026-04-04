@@ -1,2 +1,6 @@
 [MASTER]
 extension-pkg-allow-list=PyQt6
+
+[BASIC]
+# Qt overrides use camelCase (showEvent, closeEvent, etc.)
+good-names=showEvent,closeEvent

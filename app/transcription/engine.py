@@ -52,7 +52,7 @@ class TranscriptionEngine:
         if self._model is None:
             raise RuntimeError("モデルがロードされていません。load() を呼んでください。")
 
-        segments, info = self._model.transcribe(
+        segments, _info = self._model.transcribe(
             audio,
             language=self.language,
             initial_prompt=self.initial_prompt if self.initial_prompt else None,

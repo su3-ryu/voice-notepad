@@ -34,7 +34,7 @@ def is_hallucination(text: str) -> bool:
         if cleaned == pattern or cleaned.endswith(pattern):
             return True
     # 同じ文字の繰り返し（例: "ああああ"）
-    if len(cleaned) > 2 and len(set(cleaned)) <= 2:
+    if len(cleaned) > 2 and len(set(cleaned)) <= 2:  # pylint: disable=chained-comparison
         return True
     return False
 
