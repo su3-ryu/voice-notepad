@@ -27,7 +27,7 @@ class VoiceActivityDetector:
 
     def load(self) -> None:
         """Silero VAD モデルをロード（silero-vad 6.x API）"""
-        from silero_vad import load_silero_vad
+        from silero_vad import load_silero_vad  # pylint: disable=import-outside-toplevel
         self._model = load_silero_vad()
         self._model.eval()
 
