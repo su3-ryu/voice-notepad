@@ -54,6 +54,11 @@ class TranscriptionEngine:
         if self._model is None:
             raise RuntimeError("モデルがロードされていません。load() を呼んでください。")
 
+        # 音声の先頭・末尾に短い無音をパディング（認識精度向上）
+        pad_samples = int(0.3 * 16000)  # 300ms
+        pad = np.zeros(pad_samples, dtype=np.float32)
+        audio = np.concatenate([pad, audio.flatten(), pad])
+
         segments, _info = self._model.transcribe(
             audio,
             language=self.language,
