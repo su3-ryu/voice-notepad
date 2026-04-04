@@ -3,14 +3,13 @@
 PyQt6 ベースの音声メモ帳 UI
 """
 import threading
-import numpy as np
 from pathlib import Path
 from typing import Optional
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QTextEdit, QLabel, QStatusBar, QFileDialog, QMessageBox
+    QPushButton, QTextEdit, QFileDialog, QMessageBox
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt6.QtCore import QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QKeySequence, QShortcut
 
 from app.audio.recorder import AudioRecorder
