@@ -62,6 +62,9 @@ def postprocess(text: str, add_punctuation: bool = False) -> str:
     text = normalize_japanese(text)
     if not text:
         return ""
+    # 短すぎるテキストはノイズの可能性が高い
+    if len(text) < 2:
+        return ""
     if is_hallucination(text):
         return ""
     if add_punctuation:

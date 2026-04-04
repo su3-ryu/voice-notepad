@@ -24,6 +24,8 @@ class VoiceActivityDetector:
         self._silence_frames = 0
         self._in_speech = False
         self._speech_buffer: list = []
+        self._pre_speech_buffer: list = []
+        self._pre_speech_max = 3  # 発話開始前に保持するチャンク数
 
     def load(self) -> None:
         """Silero VAD モデルをロード（silero-vad 6.x API）"""
@@ -50,9 +52,12 @@ class VoiceActivityDetector:
         if prob >= self.threshold:
             self._speech_frames += 1
             self._silence_frames = 0
-            self._speech_buffer.append(audio_chunk)
             if not self._in_speech and self._speech_frames >= self.min_speech_frames:
+                # 発話開始 → 先頭切れ防止のため直前のチャンクも含める
+                self._speech_buffer.extend(self._pre_speech_buffer)
+                self._pre_speech_buffer.clear()
                 self._in_speech = True
+            self._speech_buffer.append(audio_chunk)
         else:
             self._silence_frames += 1
             if self._in_speech:
@@ -63,6 +68,10 @@ class VoiceActivityDetector:
                     self._reset()
                     return segment
             else:
+                # 発話前: 直近チャンクをリングバッファに保持
+                self._pre_speech_buffer.append(audio_chunk)
+                if len(self._pre_speech_buffer) > self._pre_speech_max:
+                    self._pre_speech_buffer.pop(0)
                 self._speech_frames = 0
                 self._speech_buffer.clear()
 
@@ -78,3 +87,4 @@ class VoiceActivityDetector:
         self._silence_frames = 0
         self._in_speech = False
         self._speech_buffer = []
+        self._pre_speech_buffer = []
