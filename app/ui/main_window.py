@@ -5,6 +5,8 @@ PyQt6 ベースの音声メモ帳 UI
 import threading
 from pathlib import Path
 from typing import Optional
+
+import yaml
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QTextEdit, QFileDialog, QMessageBox
@@ -17,7 +19,6 @@ from app.audio.vad import VoiceActivityDetector
 from app.transcription.engine import TranscriptionEngine
 from app.transcription.postprocess import postprocess
 from app.storage.notes import NoteStorage
-import yaml
 
 
 class TranscriptionWorker(QThread):

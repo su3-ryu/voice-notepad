@@ -2,9 +2,10 @@
 Voice Activity Detection (VAD) モジュール
 Silero VAD を使って発話区間を検出する
 """
+from typing import Optional
+
 import numpy as np
 import torch
-from typing import Optional
 
 
 class VoiceActivityDetector:

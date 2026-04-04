@@ -2,10 +2,11 @@
 音声認識エンジン
 faster-whisper を使って音声をテキストに変換する
 """
-import numpy as np
-from faster_whisper import WhisperModel
 from typing import Optional
+
+import numpy as np
 import yaml
+from faster_whisper import WhisperModel
 
 
 class TranscriptionEngine:

@@ -3,9 +3,10 @@
 sounddevice を使ったリアルタイム音声キャプチャ
 """
 import queue
+from typing import Optional
+
 import numpy as np
 import sounddevice as sd
-from typing import Optional
 
 
 class AudioRecorder:
