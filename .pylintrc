@@ -7,7 +7,7 @@ good-names=showEvent,closeEvent
 
 [DESIGN]
 # UIクラスやデータクラスはattributeが多くなるのが自然
-max-attributes=15
+max-attributes=25
 # Dialogなどpublic methodが少ないクラスを許容
 min-public-methods=0
 

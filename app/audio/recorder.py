@@ -10,22 +10,35 @@ import sounddevice as sd
 
 
 class AudioRecorder:
-    """マイクから音声をリアルタイムで録音するクラス"""
+    """マイクまたはループバックデバイスから音声をリアルタイムで録音するクラス"""
 
     def __init__(self, sample_rate: int = 16000, channels: int = 1,
-                 chunk_duration_ms: int = 30):
+                 chunk_duration_ms: int = 30, device: Optional[int] = None):
         self.sample_rate = sample_rate
         self.channels = channels
         self.chunk_size = int(sample_rate * chunk_duration_ms / 1000)
+        self.device = device
         self._audio_queue: queue.Queue = queue.Queue()
         self._stream: Optional[sd.InputStream] = None
         self._is_recording = False
+        # デバイスの実際のチャンネル数（ステレオミキサー等はステレオ）
+        self._device_channels = channels
+        if device is not None:
+            try:
+                info = sd.query_devices(device)
+                self._device_channels = min(int(info["max_input_channels"]), 2)
+            except (ValueError, sd.PortAudioError):
+                self._device_channels = channels
 
     def _callback(self, indata: np.ndarray, _frames: int,
                   _time_info, status) -> None:
         if status:
             print(f"[AudioRecorder] 警告: {status}")
-        self._audio_queue.put(indata.copy())
+        audio = indata.copy()
+        # ステレオ → モノラル変換
+        if audio.ndim == 2 and audio.shape[1] > 1:
+            audio = audio.mean(axis=1, keepdims=True)
+        self._audio_queue.put(audio)
 
     def start(self) -> None:
         """録音開始"""
@@ -33,8 +46,9 @@ class AudioRecorder:
             return
         self._is_recording = True
         self._stream = sd.InputStream(
+            device=self.device,
             samplerate=self.sample_rate,
-            channels=self.channels,
+            channels=self._device_channels,
             dtype="float32",
             blocksize=self.chunk_size,
             callback=self._callback,
@@ -71,10 +85,22 @@ class AudioRecorder:
 
     @staticmethod
     def list_devices() -> list[dict]:
-        """利用可能なマイクデバイスの一覧を返す"""
+        """利用可能な入力デバイスの一覧を返す"""
         devices = sd.query_devices()
         return [
             {"index": i, "name": d["name"], "channels": d["max_input_channels"]}
             for i, d in enumerate(devices)
             if d["max_input_channels"] > 0
         ]
+
+    @staticmethod
+    def find_loopback_device() -> Optional[int]:
+        """ステレオミキサー等のループバックデバイスを自動検出する"""
+        keywords = ["ステレオ ミキサー", "Stereo Mix", "What U Hear", "ループバック", "Loopback"]
+        devices = sd.query_devices()
+        for i, d in enumerate(devices):
+            if d["max_input_channels"] > 0:
+                for kw in keywords:
+                    if kw.lower() in d["name"].lower():
+                        return i
+        return None
