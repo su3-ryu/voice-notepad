@@ -66,6 +66,7 @@ class AudioRecorder:
 
     @property
     def is_recording(self) -> bool:
+        """録音中かどうかを返す"""
         return self._is_recording
 
     @staticmethod

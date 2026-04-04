@@ -8,6 +8,7 @@ from app.ui.main_window import MainWindow
 
 
 def main():
+    """アプリケーションのエントリーポイント"""
     app = QApplication(sys.argv)
     app.setApplicationName("Voice Notepad")
     app.setOrganizationName("VoiceNotepad")

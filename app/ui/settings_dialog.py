@@ -5,6 +5,8 @@ from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QDialogButtonBox
 
 
 class SettingsDialog(QDialog):
+    """設定ダイアログ（将来の拡張用スケルトン）"""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("設定")

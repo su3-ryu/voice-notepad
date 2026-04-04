@@ -35,6 +35,7 @@ class TranscriptionWorker(QThread):
         self._running = False
 
     def run(self) -> None:
+        """録音・VAD・文字起こしのメインループ"""
         self._running = True
         self.recorder.start()
         self.status_changed.emit("録音中...")
@@ -64,6 +65,7 @@ class TranscriptionWorker(QThread):
         self.status_changed.emit("停止中")
 
     def stop(self) -> None:
+        """ワーカースレッドを停止する"""
         self._running = False
 
 
@@ -178,6 +180,7 @@ class MainWindow(QMainWindow):
         thread.start()
 
     def showEvent(self, event) -> None:
+        """ウィンドウ表示時にモデルの非同期ロードを開始"""
         super().showEvent(event)
         if not self._models_loaded:
             QTimer.singleShot(200, self._load_models_async)
@@ -247,5 +250,6 @@ class MainWindow(QMainWindow):
             self._status_bar.showMessage(f"開きました: {filepath}")
 
     def closeEvent(self, event) -> None:
+        """ウィンドウ終了時に録音を停止する"""
         self._stop_recording()
         event.accept()
