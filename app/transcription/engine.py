@@ -21,6 +21,7 @@ class TranscriptionEngine:
         self.initial_prompt: str = t.get("initial_prompt", "")
         self.device: str = t.get("device", "auto")
         self.compute_type: str = t.get("compute_type", "int8")
+        self.cpu_threads: int = t.get("cpu_threads", 4)
         self._model: Optional[WhisperModel] = None
 
     def load(self) -> None:
@@ -35,6 +36,7 @@ class TranscriptionEngine:
             self.model_name,
             device=device,
             compute_type=self.compute_type,
+            cpu_threads=self.cpu_threads,
             download_root="models",
         )
         print("[TranscriptionEngine] モデルロード完了")
@@ -63,7 +65,7 @@ class TranscriptionEngine:
             no_speech_threshold=0.6,
             log_prob_threshold=-1.0,
             compression_ratio_threshold=2.4,
-            vad_filter=False,
+            vad_filter=True,
         )
 
         result_parts = []
