@@ -1,13 +1,13 @@
 # Voice Notepad 設定ファイル
 
 transcription:
-  model: "medium"                             # 中精度モデル（CPU向けバランス型）
+  model: "large-v3"                           # 最高精度モデル
+  # model: "medium"                          # 中精度モデル（CPU向けバランス型）
   # model: "small"                           # 軽量高速（精度低め）
-  # model: "large-v3"                        # 最高精度（GPU推奨）
   language: "ja"
-  initial_prompt: "以下は日本語の音声の文字起こしです。"
+  initial_prompt: "以下は日本語の音声の正確な文字起こしです。専門用語、医学用語、固有名詞を正確に認識してください。"
   device: "auto"  # "cuda" / "cpu" / "auto"
-  compute_type: "int8"  # "float16" (GPU) / "int8" (CPU)
+  compute_type: "auto"  # "auto"で最適な型を自動選択（GPU: float16, CPU: int8）
 
 audio:
   sample_rate: 16000

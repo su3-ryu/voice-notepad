@@ -28,14 +28,19 @@ class TranscriptionEngine:
         """モデルをロード（初回は自動ダウンロード）"""
         device = self.device
         if device == "auto":
-            import torch
+            import torch  # pylint: disable=import-outside-toplevel
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        print(f"[TranscriptionEngine] モデルロード中: {self.model_name} ({device})")
+        # compute_type自動選択: GPU→float16, CPU→int8
+        compute_type = self.compute_type
+        if compute_type == "auto":
+            compute_type = "float16" if device == "cuda" else "int8"
+
+        print(f"[TranscriptionEngine] モデルロード中: {self.model_name} ({device}, {compute_type})")
         self._model = WhisperModel(
             self.model_name,
             device=device,
-            compute_type=self.compute_type,
+            compute_type=compute_type,
             cpu_threads=self.cpu_threads,
             download_root="models",
         )

@@ -43,7 +43,22 @@ def normalize_japanese(text: str) -> str:
     """日本語テキストの基本正規化"""
     text = text.replace("\u3000", " ")
     text = re.sub(r" {2,}", " ", text)
+    # 半角カタカナ → 全角カタカナ
+    text = text.translate(str.maketrans(
+        "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜｦﾝ",
+        "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン"
+    ))
     return text.strip()
+
+
+def fix_common_misrecognitions(text: str) -> str:
+    """Whisperの日本語でよくある誤認識パターンを補正する"""
+    # 「カッコ○○」→ 括弧表記に変換
+    text = re.sub(r'カッコ(.+?)カッコ閉じ', r'（\1）', text)
+    text = re.sub(r'カッコ(.+?)閉じカッコ', r'（\1）', text)
+    # 「まる」「てん」が句読点の読み上げの場合
+    text = re.sub(r'(?<=[ぁ-ん])まる(?=[ぁ-ん]|$)', '。', text)
+    return text
 
 
 def ensure_punctuation(text: str) -> str:
@@ -67,6 +82,7 @@ def postprocess(text: str, add_punctuation: bool = False) -> str:
         return ""
     if is_hallucination(text):
         return ""
+    text = fix_common_misrecognitions(text)
     if add_punctuation:
         text = ensure_punctuation(text)
     return text
