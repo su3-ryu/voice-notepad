@@ -1,0 +1,33 @@
+# Voice Notepad 設定ファイル
+
+transcription:
+  model: "medium"                             # 中精度モデル（CPU向けバランス型）
+  # model: "small"                           # 軽量高速（精度低め）
+  # model: "large-v3"                        # 最高精度（GPU推奨）
+  language: "ja"
+  initial_prompt: "以下は日本語の音声の文字起こしです。"
+  device: "auto"  # "cuda" / "cpu" / "auto"
+  compute_type: "int8"  # "float16" (GPU) / "int8" (CPU)
+
+audio:
+  sample_rate: 16000
+  channels: 1
+  chunk_duration_ms: 32  # VAD チャンク長(ms) ※16000Hzで必ず512サンプル
+
+vad:
+  enabled: true
+  threshold: 0.4
+  min_speech_duration_ms: 200
+  min_silence_duration_ms: 300
+
+ui:
+  font_family: "Yu Gothic UI"
+  font_size: 12
+  window_width: 800
+  window_height: 600
+  theme: "light"  # "light" / "dark"
+
+storage:
+  save_directory: "notes"
+  auto_save: true
+  auto_save_interval_sec: 60
