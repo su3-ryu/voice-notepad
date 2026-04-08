@@ -3,6 +3,7 @@ notes/
 __pycache__/
 *.pyc
 *.pyo
+*.log
 .env
 *.egg-info/
 dist/
