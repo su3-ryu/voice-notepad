@@ -14,10 +14,12 @@ class VoiceActivityDetector:
     def __init__(self, threshold: float = 0.5,
                  min_speech_duration_ms: int = 250,
                  min_silence_duration_ms: int = 700,
+                 max_speech_duration_ms: int = 0,
                  sample_rate: int = 16000):
         self.threshold = threshold
         self.min_speech_frames = int(min_speech_duration_ms * sample_rate / 1000 / 512)
         self.min_silence_frames = int(min_silence_duration_ms * sample_rate / 1000 / 512)
+        self.max_speech_frames = int(max_speech_duration_ms * sample_rate / 1000 / 512)
         self.sample_rate = sample_rate
         self._model: Optional[torch.nn.Module] = None
         self._speech_frames = 0
@@ -26,6 +28,7 @@ class VoiceActivityDetector:
         self._speech_buffer: list = []
         self._pre_speech_buffer: list = []
         self._pre_speech_max = 3  # 発話開始前に保持するチャンク数
+        self._carry_over_frames = 2  # 強制分割時に少し重ねて語切れを抑える
 
     def load(self) -> None:
         """Silero VAD モデルをロード（silero-vad 6.x API）"""
@@ -58,6 +61,8 @@ class VoiceActivityDetector:
                 self._pre_speech_buffer.clear()
                 self._in_speech = True
             self._speech_buffer.append(audio_chunk)
+            if self._should_flush_long_segment():
+                return self._flush_long_segment()
         else:
             self._silence_frames += 1
             if self._in_speech:
@@ -88,3 +93,19 @@ class VoiceActivityDetector:
         self._in_speech = False
         self._speech_buffer = []
         self._pre_speech_buffer = []
+
+    def _should_flush_long_segment(self) -> bool:
+        return (
+            self._in_speech
+            and self.max_speech_frames > 0
+            and len(self._speech_buffer) >= self.max_speech_frames
+        )
+
+    def _flush_long_segment(self) -> np.ndarray:
+        segment = np.concatenate(self._speech_buffer, axis=0)
+        carry_over = self._speech_buffer[-self._carry_over_frames:]
+        self._speech_buffer = list(carry_over)
+        self._speech_frames = len(self._speech_buffer)
+        self._silence_frames = 0
+        self._in_speech = True
+        return segment

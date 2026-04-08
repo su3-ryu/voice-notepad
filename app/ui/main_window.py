@@ -237,6 +237,7 @@ class MainWindow(QMainWindow):
             threshold=cfg["vad"]["threshold"],
             min_speech_duration_ms=cfg["vad"]["min_speech_duration_ms"],
             min_silence_duration_ms=cfg["vad"]["min_silence_duration_ms"],
+            max_speech_duration_ms=cfg["vad"].get("speaker_max_speech_duration_ms", 2500),
             sample_rate=sr,
         )
 
