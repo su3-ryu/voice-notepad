@@ -460,10 +460,44 @@ class MainWindow(QMainWindow):
             return self._active_panel.editor
         return self._panel_mic.editor
 
+    @staticmethod
+    def _paragraph_text(current: str) -> str:
+        """現在の段落だけを取り出す"""
+        paragraphs = [p for p in current.split("\n\n") if p.strip()]
+        if not paragraphs:
+            return ""
+        return paragraphs[-1].strip()
+
+    @staticmethod
+    def _starts_new_topic(text: str) -> bool:
+        """話題転換らしい出だしを検出する"""
+        markers = (
+            "まず", "次に", "一方", "ただし", "しかし", "でも", "なので",
+            "つまり", "例えば", "また", "それから", "では", "それでは",
+            "結論", "要するに", "さて",
+        )
+        return text.lstrip().startswith(markers)
+
+    def _needs_paragraph_break(self, current: str, text: str) -> bool:
+        """長さと内容から段落を分けるか判定する"""
+        paragraph = self._paragraph_text(current)
+        if not paragraph:
+            return False
+        if self._starts_new_topic(text) and len(paragraph) >= 50:
+            return True
+        return len(paragraph) >= 160 and paragraph[-1:] in "。！？!?"
+
     def _append_text(self, text: str, editor: QTextEdit) -> None:
         """認識結果をエディタに追記"""
         cursor = editor.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
+        current = editor.toPlainText()
+        text = text.strip()
+        if not text:
+            return
+        if current:
+            if self._needs_paragraph_break(current, text):
+                cursor.insertText("\n\n")
         cursor.insertText(text)
         editor.setTextCursor(cursor)
         editor.ensureCursorVisible()

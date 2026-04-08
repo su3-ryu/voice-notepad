@@ -4,13 +4,13 @@ transcription:
   # CPUでの精度と速度のバランスを取るため既定はmedium。速度優先なら "small" に変更。
   model: "medium"
   language: "ja"
-  initial_prompt: "以下は日本語の音声の正確な文字起こしです。専門用語、医学用語、固有名詞を正確に認識してください。"
+  initial_prompt: ""  # 短いリアルタイム認識ではプロンプト文が混入しやすいため既定は空
   hotwords: ""  # 認識させたい固有名詞・専門用語をスペース区切りで追加
   device: "auto"  # "cuda" / "cpu" / "auto"
   compute_type: "auto"  # "auto"で最適な型を自動選択（GPU: float16, CPU: int8）
   cpu_threads: "auto"  # CPU時は論理コア数から自動設定
   num_workers: 1
-  beam_size: 1  # 大きいほど精度寄り、小さいほど高速
+  beam_size: 3  # 大きいほど精度寄り、小さいほど高速
   best_of: 1
   temperature: 0.0
   condition_on_previous_text: false  # マイク/スピーカー間で文脈を混ぜない
@@ -21,7 +21,7 @@ transcription:
   compression_ratio_threshold: 2.4
   use_batched: false  # 長尺処理向け。リアルタイム短文ではfalseを推奨
   batch_size: 4
-  pad_duration_ms: 120  # 短いほど低遅延。認識が途切れる場合は200-300へ上げる
+  pad_duration_ms: 200  # 短いほど低遅延。認識が途切れる場合は200-300へ上げる
 
 audio:
   sample_rate: 16000
@@ -32,8 +32,8 @@ vad:
   enabled: true
   threshold: 0.4
   min_speech_duration_ms: 200
-  min_silence_duration_ms: 300
-  speaker_max_speech_duration_ms: 2500  # スピーカー音声は無音が無くても約2.5秒ごとに認識へ回す
+  min_silence_duration_ms: 500
+  speaker_max_speech_duration_ms: 6000  # スピーカー音声は精度優先で約6秒ごとに認識へ回す
 
 ui:
   font_family: "Yu Gothic UI"

@@ -3,6 +3,7 @@
 faster-whisper を使って音声をテキストに変換する
 """
 import os
+import re
 import time
 from typing import Optional
 
@@ -78,6 +79,22 @@ class TranscriptionEngine:
         )
         print("[TranscriptionEngine] モデルロード完了")
 
+    @staticmethod
+    def _looks_repetitive(text: str) -> bool:
+        """短い認識区間で出やすい同一フレーズ反復の幻覚を検出する"""
+        compact = re.sub(r"\s+", "", text)
+        if len(compact) < 12:
+            return False
+
+        for size in range(4, 13):
+            counts = {}
+            for start in range(0, max(len(compact) - size + 1, 0), size):
+                phrase = compact[start:start + size]
+                counts[phrase] = counts.get(phrase, 0) + 1
+                if counts[phrase] >= 3:
+                    return True
+        return False
+
     def transcribe(self, audio: np.ndarray) -> str:
         """
         音声データ (float32, 16kHz, mono) をテキストに変換する
@@ -133,6 +150,10 @@ class TranscriptionEngine:
             result_parts.append(seg.text)
 
         result = "".join(result_parts).strip()
+        if self._looks_repetitive(result):
+            print(f"[TranscriptionEngine] 反復した認識結果を破棄: {result}")
+            return ""
+
         elapsed = time.perf_counter() - start
         print(
             f"[TranscriptionEngine] 認識完了: {elapsed:.2f}s, "
