@@ -23,6 +23,23 @@ transcription:
   batch_size: 4
   pad_duration_ms: 200  # 短いほど低遅延。認識が途切れる場合は200-300へ上げる
 
+performance:
+  mode: "speed"  # "speed" / "accuracy"
+  speed:
+    transcription_model: "small"
+    beam_size: 1
+    speaker_max_speech_duration_ms: 3000
+    defer_correction_while_recording: true
+    backlog_batch_threshold: 3
+    backlog_batch_max_segments: 3
+  accuracy:
+    transcription_model: "medium"
+    beam_size: 3
+    speaker_max_speech_duration_ms: 6000
+    defer_correction_while_recording: false
+    backlog_batch_threshold: 999
+    backlog_batch_max_segments: 1
+
 audio:
   sample_rate: 16000
   channels: 1
@@ -50,7 +67,9 @@ storage:
 correction:
   enabled: true
   ollama_url: "http://localhost:11434"
-  model: "qwen2.5:7b"            # 日本語に強いモデル（VRAM不足なら "qwen2.5:3b"）
+  model: "qwen2.5:7b"            # 1段目: 誤変換補正
+  review_enabled: true
+  review_model: "qwen2.5:7b"     # 2段目: 保守的な文書校閲。軽くしたいなら "qwen2.5:3b"
   batch_interval_sec: 15          # 校正バッチの実行間隔（秒）
   min_segments: 3                 # 校正を開始する最小セグメント数
   timeout_sec: 30                 # Ollama API タイムアウト（秒）

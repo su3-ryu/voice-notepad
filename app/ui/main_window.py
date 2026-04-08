@@ -3,6 +3,7 @@
 PyQt6 ベースの音声メモ帳 UI（マイク/スピーカー 左右2パネル構成）
 """
 import queue
+import sys
 import threading
 import time
 from pathlib import Path
@@ -15,7 +16,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QTextEdit, QFileDialog, QMessageBox,
     QSplitter, QLabel
 )
-from PyQt6.QtCore import QThread, pyqtSignal, QTimer, Qt
+from PyQt6.QtCore import QThread, pyqtSignal, QTimer, Qt, QProcess
 from PyQt6.QtGui import QFont, QKeySequence, QShortcut
 
 from app.audio.recorder import AudioRecorder
@@ -73,14 +74,19 @@ class TranscriptionWorker(QThread):
 
 
 class TranscriptionQueueWorker(QThread):
-    """マイク/スピーカーの音声セグメントを1本ずつ文字起こしするワーカー"""
+    """音声セグメントを1本ずつ文字起こしするワーカー"""
 
     text_ready = pyqtSignal(str, object)
     status_changed = pyqtSignal(str)
 
-    def __init__(self, engine: TranscriptionEngine):
+    def __init__(self, engine: TranscriptionEngine, queue_label: str,
+                 backlog_batch_threshold: int = 3,
+                 backlog_batch_max_segments: int = 3):
         super().__init__()
         self.engine = engine
+        self.queue_label = queue_label
+        self.backlog_batch_threshold = backlog_batch_threshold
+        self.backlog_batch_max_segments = backlog_batch_max_segments
         self._queue: queue.Queue = queue.Queue()
         self._running = False
 
@@ -89,10 +95,10 @@ class TranscriptionQueueWorker(QThread):
         self._queue.put((source, editor, segment))
         waiting = self._queue.qsize()
         if waiting >= 3:
-            self.status_changed.emit(f"認識待ち: {waiting}件")
+            self.status_changed.emit(f"{self.queue_label} 認識待ち: {waiting}件")
 
     def run(self) -> None:
-        """共有キューから1件ずつ取り出して文字起こしする"""
+        """専用キューから1件ずつ取り出して文字起こしする"""
         self._running = True
         while self._running or not self._queue.empty():
             item = self._queue.get()
@@ -105,6 +111,7 @@ class TranscriptionQueueWorker(QThread):
                 suffix = f" / 待ち {waiting}件" if waiting else ""
                 self.status_changed.emit(f"⏳ {source}を認識中...{suffix}")
                 start = time.perf_counter()
+                segment = self._coalesce_backlog(source, editor, segment)
                 text = self.engine.transcribe(segment)
                 text = postprocess(text)
                 if text:
@@ -115,6 +122,50 @@ class TranscriptionQueueWorker(QThread):
                 )
             except (RuntimeError, OSError, ValueError) as e:
                 print(f"[TranscriptionQueueWorker] エラー: {e}")
+
+    def _coalesce_backlog(self, source: str, editor: QTextEdit,
+                          segment: np.ndarray) -> np.ndarray:
+        """認識待ちが溜まったら近い音声セグメントをまとめる"""
+        if self.backlog_batch_max_segments <= 1:
+            return segment
+        waiting = self._queue.qsize()
+        if waiting < self.backlog_batch_threshold:
+            return segment
+
+        segments = [segment]
+        held_items = []
+        max_extra = self.backlog_batch_max_segments - 1
+        while len(segments) <= max_extra:
+            try:
+                item = self._queue.get_nowait()
+            except queue.Empty:
+                break
+            if item is None:
+                self._running = False
+                continue
+
+            next_source, next_editor, next_segment = item
+            if next_source == source and next_editor is editor:
+                segments.append(next_segment)
+                continue
+            held_items.append(item)
+
+        for item in held_items:
+            self._queue.put(item)
+
+        if len(segments) == 1:
+            return segment
+
+        silence = np.zeros(int(16000 * 0.15), dtype=np.float32)
+        batched = []
+        for part in segments:
+            if batched:
+                batched.append(silence)
+            batched.append(part.flatten())
+        self.status_changed.emit(
+            f"{self.queue_label} 認識待ちを{len(segments)}件まとめて処理"
+        )
+        return np.concatenate(batched)
 
     def stop(self) -> None:
         """ワーカーを停止する。キューに残ったセグメントは処理してから終了する。"""
@@ -203,10 +254,48 @@ class MainWindow(QMainWindow):
         self._worker_spk: Optional[TranscriptionWorker] = None
         self._models_loaded = False
         self._active_panel: Optional[TranscriptionPanel] = None
+        self._restart_requested = False
 
     def _load_config(self) -> None:
         with open("config.yaml", encoding="utf-8") as f:
             self._config = yaml.safe_load(f)
+        self._apply_performance_profile()
+
+    def _apply_performance_profile(self) -> None:
+        """設定された動作モードに応じて速度/精度の既定値を反映する"""
+        performance = self._config.get("performance", {})
+        mode = performance.get("mode", "accuracy")
+        if mode not in ("speed", "accuracy"):
+            return
+
+        profile = performance.get(mode, {})
+        transcription = self._config["transcription"]
+        vad = self._config["vad"]
+        correction = self._config["correction"]
+
+        transcription["model"] = profile.get(
+            "transcription_model", transcription.get("model", "medium")
+        )
+        transcription["beam_size"] = profile.get(
+            "beam_size", transcription.get("beam_size", 3)
+        )
+        vad["speaker_max_speech_duration_ms"] = profile.get(
+            "speaker_max_speech_duration_ms",
+            vad.get("speaker_max_speech_duration_ms", 6000),
+        )
+        correction["defer_while_recording"] = profile.get(
+            "defer_correction_while_recording",
+            correction.get("defer_while_recording", False),
+        )
+
+    def _performance_mode(self) -> str:
+        """現在選択されている動作モードを返す"""
+        return self._config.get("performance", {}).get("mode", "accuracy")
+
+    def _performance_profile(self) -> dict:
+        """現在の動作モードに対応するプロファイルを返す"""
+        performance = self._config.get("performance", {})
+        return performance.get(self._performance_mode(), {})
 
     def _setup_components(self) -> None:
         """オーディオ・VAD・エンジン・校正コンポーネントの初期化"""
@@ -241,9 +330,27 @@ class MainWindow(QMainWindow):
             sample_rate=sr,
         )
 
-        # 共有コンポーネント
-        self._engine = TranscriptionEngine()
-        self._transcription_queue_worker = TranscriptionQueueWorker(self._engine)
+        # マイク/スピーカー別にWhisperモデルと認識キューを持つ
+        profile = self._performance_profile()
+        backlog_batch_threshold = profile.get("backlog_batch_threshold", 999)
+        backlog_batch_max_segments = profile.get("backlog_batch_max_segments", 1)
+
+        self._engine_mic = TranscriptionEngine(
+            transcription_config=cfg["transcription"]
+        )
+        self._engine_spk = TranscriptionEngine(
+            transcription_config=cfg["transcription"]
+        )
+        self._transcription_queue_worker_mic = TranscriptionQueueWorker(
+            self._engine_mic, "マイク",
+            backlog_batch_threshold=backlog_batch_threshold,
+            backlog_batch_max_segments=backlog_batch_max_segments,
+        )
+        self._transcription_queue_worker_spk = TranscriptionQueueWorker(
+            self._engine_spk, "スピーカー",
+            backlog_batch_threshold=backlog_batch_threshold,
+            backlog_batch_max_segments=backlog_batch_max_segments,
+        )
         self._storage = NoteStorage(
             save_dir=cfg["storage"].get("save_directory", "notes")
         )
@@ -292,6 +399,7 @@ class MainWindow(QMainWindow):
         self._panel_mic.editor.installEventFilter(self)
         self._panel_spk.editor.installEventFilter(self)
         self._active_panel = self._panel_mic
+        self._restore_restart_session()
 
         # ボタン行（共通操作）
         btn_layout = QHBoxLayout()
@@ -308,11 +416,28 @@ class MainWindow(QMainWindow):
         self._btn_save.setFixedHeight(36)
         self._btn_save.clicked.connect(self._save_note)
 
+        self._btn_speed = QPushButton("速度優先")
+        self._btn_speed.setFixedHeight(36)
+        self._btn_speed.clicked.connect(lambda: self._set_performance_mode("speed"))
+
+        self._btn_accuracy = QPushButton("精度優先")
+        self._btn_accuracy.setFixedHeight(36)
+        self._btn_accuracy.clicked.connect(
+            lambda: self._set_performance_mode("accuracy"))
+
+        self._btn_restart = QPushButton("再起動")
+        self._btn_restart.setFixedHeight(36)
+        self._btn_restart.clicked.connect(self._restart_app)
+
         btn_layout.addWidget(self._btn_clear)
+        btn_layout.addWidget(self._btn_speed)
+        btn_layout.addWidget(self._btn_accuracy)
+        btn_layout.addWidget(self._btn_restart)
         btn_layout.addStretch()
         btn_layout.addWidget(self._btn_open)
         btn_layout.addWidget(self._btn_save)
         layout.addLayout(btn_layout)
+        self._update_performance_buttons()
 
         # ステータスバー
         self._status_bar = self.statusBar()
@@ -321,10 +446,137 @@ class MainWindow(QMainWindow):
         # 校正シグナル接続
         self._corrector.correction_ready.connect(self._apply_correction)
         self._corrector.status_changed.connect(self._status_bar.showMessage)
-        self._transcription_queue_worker.text_ready.connect(self._append_text)
-        self._transcription_queue_worker.status_changed.connect(
-            self._status_bar.showMessage)
-        self._transcription_queue_worker.start()
+        for worker in (
+                self._transcription_queue_worker_mic,
+                self._transcription_queue_worker_spk):
+            worker.text_ready.connect(self._append_text)
+            worker.status_changed.connect(self._status_bar.showMessage)
+            worker.start()
+
+    def _update_performance_buttons(self) -> None:
+        """速度/精度ボタンの選択状態を表示する"""
+        mode = self._performance_mode()
+        active_style = "font-weight: bold; background-color: #dbeafe; color: #111111;"
+        self._btn_speed.setStyleSheet(active_style if mode == "speed" else "")
+        self._btn_accuracy.setStyleSheet(
+            active_style if mode == "accuracy" else "")
+
+    def _set_performance_mode(self, mode: str) -> None:
+        """速度/精度の動作モードを保存する"""
+        if mode not in ("speed", "accuracy"):
+            return
+        if self._performance_mode() == mode:
+            label = "速度優先" if mode == "speed" else "精度優先"
+            self._status_bar.showMessage(f"{label}モードを選択済みです")
+            return
+
+        self._config.setdefault("performance", {})["mode"] = mode
+        try:
+            self._write_performance_mode(mode)
+        except (OSError, RuntimeError) as exc:
+            QMessageBox.warning(self, "設定を保存できませんでした", str(exc))
+            return
+        self._update_performance_buttons()
+
+        label = "速度優先" if mode == "speed" else "精度優先"
+        self._status_bar.showMessage(f"{label}モードに変更しました。再起動後に反映されます")
+        QMessageBox.information(
+            self,
+            "動作モードを変更しました",
+            f"{label}モードに変更しました。\n"
+            "WhisperモデルとVAD設定は、アプリを再起動した後に反映されます。",
+        )
+
+    @staticmethod
+    def _write_performance_mode(mode: str) -> None:
+        """コメントを保ったまま config.yaml の performance.mode だけを書き換える"""
+        config_path = Path("config.yaml")
+        lines = config_path.read_text(encoding="utf-8").splitlines(keepends=True)
+        in_performance = False
+        replaced = False
+        for index, line in enumerate(lines):
+            stripped = line.lstrip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            indent = len(line) - len(stripped)
+            if indent == 0 and stripped.startswith("performance:"):
+                in_performance = True
+                continue
+            if in_performance and indent == 0:
+                break
+            if in_performance and indent == 2 and stripped.startswith("mode:"):
+                newline = "\r\n" if line.endswith("\r\n") else "\n"
+                comment = ""
+                if "#" in line:
+                    comment = "  #" + line.split("#", 1)[1].rstrip("\r\n")
+                lines[index] = f'  mode: "{mode}"{comment}{newline}'
+                replaced = True
+                break
+        if not replaced:
+            raise RuntimeError("config.yaml の performance.mode が見つかりません")
+        config_path.write_text("".join(lines), encoding="utf-8")
+
+    def _restart_app(self) -> None:
+        """アプリを終了して起動し直す"""
+        if self._worker_mic is not None or self._worker_spk is not None:
+            reply = QMessageBox.question(
+                self,
+                "再起動",
+                "録音を停止して再起動しますか？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        try:
+            self._save_restart_session()
+        except OSError as exc:
+            QMessageBox.warning(self, "再起動できませんでした", str(exc))
+            return
+        self._restart_requested = True
+        self.close()
+
+    def _restart_session_path(self) -> Path:
+        """再起動時だけ使う一時保存ファイルのパスを返す"""
+        save_dir = self._config["storage"].get("save_directory", "notes")
+        return Path(save_dir) / ".restart_session.yaml"
+
+    def _save_restart_session(self) -> None:
+        """再起動後に戻すため、現在の文字起こし結果を一時保存する"""
+        path = self._restart_session_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        active = "spk" if self._active_panel is self._panel_spk else "mic"
+        data = {
+            "mic": self._panel_mic.editor.toPlainText(),
+            "spk": self._panel_spk.editor.toPlainText(),
+            "active": active,
+        }
+        path.write_text(
+            yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+
+    def _restore_restart_session(self) -> None:
+        """再起動前に一時保存した文字起こし結果を復元する"""
+        path = self._restart_session_path()
+        if not path.exists():
+            return
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError) as exc:
+            print(f"[MainWindow] 再起動セッションの復元に失敗: {exc}")
+            return
+
+        self._panel_mic.editor.setPlainText(data.get("mic", ""))
+        self._panel_spk.editor.setPlainText(data.get("spk", ""))
+        if data.get("active") == "spk":
+            self._active_panel = self._panel_spk
+        else:
+            self._active_panel = self._panel_mic
+        try:
+            path.unlink()
+        except OSError as exc:
+            print(f"[MainWindow] 再起動セッションの削除に失敗: {exc}")
 
     def _setup_shortcuts(self) -> None:
         """キーボードショートカットの設定"""
@@ -352,7 +604,10 @@ class MainWindow(QMainWindow):
         def _load():
             self._vad_mic.load()
             self._vad_spk.load()
-            self._engine.load()
+            self._status_bar.showMessage("マイク用Whisperモデルをロード中...")
+            self._engine_mic.load()
+            self._status_bar.showMessage("スピーカー用Whisperモデルをロード中...")
+            self._engine_spk.load()
             self._models_loaded = True
             self._panel_mic.set_recording(False)
             self._panel_mic.set_enabled(True)
@@ -395,11 +650,15 @@ class MainWindow(QMainWindow):
         vad = self._vad_mic if is_mic else self._vad_spk
         panel = self._panel_mic if is_mic else self._panel_spk
         source = "マイク" if is_mic else "スピーカー"
+        queue_worker = (
+            self._transcription_queue_worker_mic
+            if is_mic else self._transcription_queue_worker_spk
+        )
 
         worker = TranscriptionWorker(recorder, vad)
         worker.segment_ready.connect(
             lambda segment, s=source, e=panel.editor:
-            self._transcription_queue_worker.enqueue(s, e, segment))
+            queue_worker.enqueue(s, e, segment))
         worker.status_changed.connect(self._status_bar.showMessage)
         worker.error_occurred.connect(
             lambda msg, m=is_mic: self._on_recording_error(msg, m))
@@ -551,6 +810,15 @@ class MainWindow(QMainWindow):
             if worker:
                 worker.stop()
                 worker.wait()
-        self._transcription_queue_worker.stop()
-        self._transcription_queue_worker.wait()
+        for worker in (
+                self._transcription_queue_worker_mic,
+                self._transcription_queue_worker_spk):
+            worker.stop()
+            worker.wait()
+        if self._restart_requested:
+            QProcess.startDetached(
+                sys.executable,
+                [str(Path("main.py"))],
+                str(Path.cwd()),
+            )
         event.accept()

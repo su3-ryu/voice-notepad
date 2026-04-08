@@ -7,7 +7,7 @@ import urllib.request
 import urllib.error
 
 
-SYSTEM_PROMPT = (
+DEFAULT_SYSTEM_PROMPT = (
     "あなたは日本語の音声認識(Whisper)の誤変換を校正する専門家です。\n"
     "音が似ているが文脈に合わない単語を、正しい単語に置き換えてください。\n\n"
     "ルール:\n"
@@ -25,15 +25,28 @@ SYSTEM_PROMPT = (
     "出力: サルコペニア（加齢や疾患\n"
 )
 
+REVIEW_SYSTEM_PROMPT = (
+    "あなたは日本語の文書校閲者です。\n"
+    "入力文は音声認識の一次校正を終えたテキストです。\n"
+    "意味を変えず、明らかな誤変換・表記ゆれ・不自然な助詞だけを最小限で直してください。\n\n"
+    "ルール:\n"
+    "1. 意味や主張は変えない\n"
+    "2. 文を要約しない。言い換えすぎない\n"
+    "3. 自信がない箇所はそのまま残す\n"
+    "4. 修正後のテキストのみ出力。説明不要\n"
+)
+
 
 class OllamaClient:
     """Ollama REST API を使ったテキスト校正クライアント"""
 
     def __init__(self, base_url: str = "http://localhost:11434",
-                 model: str = "qwen2.5:7b", timeout: int = 30):
+                 model: str = "qwen2.5:7b", timeout: int = 30,
+                 system_prompt: str = DEFAULT_SYSTEM_PROMPT):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
+        self.system_prompt = system_prompt
 
     def is_available(self) -> bool:
         """Ollamaサーバーが起動しているか確認する"""
@@ -56,7 +69,7 @@ class OllamaClient:
         """
         payload = json.dumps({
             "model": self.model,
-            "system": SYSTEM_PROMPT,
+            "system": self.system_prompt,
             "prompt": text,
             "stream": False,
             "options": {

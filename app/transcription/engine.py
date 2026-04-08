@@ -15,10 +15,13 @@ from faster_whisper import BatchedInferencePipeline, WhisperModel
 class TranscriptionEngine:
     """faster-whisper ベースの文字起こしエンジン"""
 
-    def __init__(self, config_path: str = "config.yaml"):
-        with open(config_path, encoding="utf-8") as f:
-            cfg = yaml.safe_load(f)
-        t = cfg["transcription"]
+    def __init__(self, config_path: str = "config.yaml",
+                 transcription_config: Optional[dict] = None):
+        if transcription_config is None:
+            with open(config_path, encoding="utf-8") as f:
+                cfg = yaml.safe_load(f)
+            transcription_config = cfg["transcription"]
+        t = transcription_config
         self.model_name: str = t["model"]
         self.language: str = t["language"]
         self.initial_prompt: str = t.get("initial_prompt", "")
